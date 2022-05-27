@@ -170,6 +170,106 @@ def circle_mask1(self, image, xc,yc,radius,perc,imagePixels):
                 
         
     return maskedd, maskinv, new_ima
+
+
+    def removeZernike2(self, ima, num):
+        coeff, mat = zernike.zernikeFit(ima, np.linspace(1,35,35))
+        surf = zernike.zernikeSurface(ima, coeff[:num], mat)
+        new_ima = ima - surf
+        return new_ima
     
+        def removeZernike3(self, ima, num):
+        coeff, mat = zernike.zernikeFit(ima, np.arange(1,35))
+        i=0
+        while i <= num:
+            surf = zernike.zernikeSurface(ima, coeff[0:i], mat[:,0:i])
+            new_ima = ima - surf
+            i=i+1
+        return new_ima
+    
+    
+    def residui2(self, image):
+        '''
+        image deve essere una sola immagine
+        '''
+        diff = []
+        rms = []
+        residui = []
+        #coeff, mat = zernike.zernikeFit(image, np.arange(1, 35))
+        #surf_image = zernike.zernikeSurface(image, coeff, mat)
+        i=1
+        while i<36:
+            surf1 = self.removeZernike(image, i)
+            #diff.append(image - surf1)
+            rms.append(np.std(surf1))
+            residui.append(i)
+            #coef, mat = ...(diff, np....)
+            #print("RMS", i, " = ", rms[i] )
+            i=i+1
+        plt.plot(residui,rms,marker="o",color='red')
+        plt.title("Calcolo dei residui")
+        plt.xlabel("Numero Zernike")
+        plt.ylabel("RMS")
+        #plt.ylim(np.min(rms), np.max(rms))
+        plt.ylim(np.min(rms)*0.75, np.max(rms)*1.25)
+        plt.show()
+        
+        
+        #plt.show(diff[i])
+        
+        return rms, diff
+    
+    
+    
+    def zernikeFit(img, zernike_index_vector):
+    '''
+    Parameters
+    ----------
+    img: numpy masked array
+        image for zernike fit
+    zernike_index_vector: numpy array
+        vector containing the index of Zernike modes to be fitted starting from 1
+
+    Returns
+    -------
+    coeff: numpy array
+        vector of zernike coefficients
+    mat: numpy array
+    '''
+    img1 = img.data
+    x, y, r, xx, yy, maschera = geo_circle.qpupil(img)
+    mm = (maschera==1)
+    coeff = _surf_fit(xx[mm], yy[mm], img1[mm], zernike_index_vector)
+    mat = _getZernike(xx[mm], yy[mm], zernike_index_vector)
+    return coeff, mat
+
+
+    def zernikeFit(img, zernike_index_vector):
+    '''
+    Parameters
+    ----------
+    img: numpy masked array
+        image for zernike fit
+    zernike_index_vector: numpy array
+        vector containing the index of Zernike modes to be fitted starting from 1
+
+    Returns
+    -------
+    coeff: numpy array
+        vector of zernike coefficients
+    mat: numpy array
+    '''
+    m = sandbox.Analysis('Prova')
+    ima = m.circle_mask_ext(img,img.shape[0],100)
+    img1 = ima.data
+    mask = np.invert(ima.mask).astype(int)
+    x, y, r = m.circle_parameters_detection(ima,img.shape[0])
+    xx, yy = geo_circle.qpupil(mask)
+    mm = (mask==1)
+    coeff = _surf_fit(xx[mm], yy[mm], img1[mm], zernike_index_vector)
+    mat = _getZernike(xx[mm], yy[mm], zernike_index_vector)
+    return coeff, mat, ima
+
+
     
 

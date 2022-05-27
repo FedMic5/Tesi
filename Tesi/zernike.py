@@ -8,7 +8,7 @@ Created on 3 feb 2022
 
 HOW TO USE IT::
 
-    from m4.ground import zernike
+    from Tesi import zernike
     coeff, mat = zernike.zernikeFit(img, zernike_index_vector)
     surf_image = zernike.zernikeSurface(img, coeff, mat)
 """

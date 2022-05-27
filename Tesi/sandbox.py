@@ -9,16 +9,18 @@ import skimage
 import numpy as np
 import matplotlib.pyplot as plt
 from numpy import mean
-from skimage.draw import circle
 from Tesi import openfileinterf
 from Tesi import zernike
 from pickle import NONE
 fac = np.math.factorial
 from Tesi import geo
+from skimage.draw import circle
 from skimage.measure import EllipseModel
 from skimage.draw import ellipse
 from skimage.measure import CircleModel
-
+from Tesi import zernike_circle
+from Tesi import zernike_ellipse
+from scipy.signal import argrelextrema
 
 class Measurements():
     
@@ -66,14 +68,29 @@ class Analysis():
     
     def cutprofiley(self, image, pixel1):  
         
-        yprofile = image[pixel1, :]
+        yprofile = image[pixel1, :]/632.8e-09
+        pixelstr = str(pixel1)
+        
         plt.plot(yprofile)
+        plt.title("Profilo dell'interferogramma con y fissa a " +pixelstr+ " pixel")
+        plt.xlabel("Pixel")
+        plt.ylabel("Wave")
+        plt.show()
+        
+
         return yprofile
       
     def cutprofilex(self, image, pixel1):  
         
-        xprofile = image[:,pixel1]
+        xprofile = image[:,pixel1]/632.8e-09
+        pixelstr = str(pixel1)
+        
         plt.plot(xprofile)
+        plt.title("Profilo dell'interferogramma con x fissa a " +pixelstr+ " pixel")
+        plt.xlabel("Pixel")
+        plt.ylabel("Wave")
+        plt.show()
+        
         return xprofile  
     
     def cutprofilexy(self, image, pixel1, pixel2, pixel3, pixel4):  
@@ -82,6 +99,32 @@ class Analysis():
         plt.plot(xyprofile)
         return xyprofile   
     
+    def localmax1D(self, array):
+        
+        a = argrelextrema(array, np.greater)
+        i=0
+        b = np.zeros(len(a[0])-1)
+        masked = np.zeros(1200)
+        
+        while i<len(a[0])-1:
+            b[i] = np.array((a[0][i+1]-a[0][i]))
+            masked[a[0][i]] = 1
+            i=i+1
+        
+        c = np.mean(b)
+        
+        maskinv = np.logical_not(masked)
+        
+        new_array = np.ma.masked_array(array, mask = maskinv)
+        
+        
+        plt.plot(new_array, marker="o")
+        plt.title("Massimi locali")
+        plt.xlabel("Pixel")
+        plt.ylabel("Wave")
+        plt.show()
+        
+        return a, b, c, new_array
     
     
     
@@ -99,7 +142,10 @@ class Analysis():
         val1 = []
         std1 = []
     
-            
+        list_rows = []
+        
+        list_rows.append([' ', 'RMS', 'Δ RMS'])
+           
         while i<len(image):
             val.append(np.reshape(image[i][:,:], -1))
             std.append(np.std(val[i]))
@@ -110,6 +156,8 @@ class Analysis():
             
             print("RMS",i, "=", std[i])
             print("DeltaRMS",i, "=", std1[i])
+            
+            list_rows.append([i+1, std[i], std1[i]])
             
             i=i+1
         
@@ -123,6 +171,15 @@ class Analysis():
         dev1 = np.std(std1)
         print("Standard Deviation RMS = ", dev)
         print("Standard Deviation deltaRMS = ", dev1)
+        
+        list_rows.append([' ', ' ', ' '])
+        list_rows.append(['Mean RMS', media, ' '])
+        list_rows.append(['Mean Δ RMS', media1, ' '])
+        list_rows.append(['Standard Deviation RMS', dev, ' '])
+        list_rows.append(['Standard Deviation Δ RMS', dev1, ' '])
+        
+        'Per salvare su file di testo togliere #'
+        #np.savetxt("RMS.csv", list_rows, delimiter= ",", fmt = '%s')
                 
         return std, media, dev, std1, media1, dev1
     '''
@@ -134,6 +191,10 @@ class Analysis():
         pv = []
         mean = np.ma.mean(image, axis=0)
         pv1 = []
+        
+        list_rows = []
+        
+        list_rows.append([' ', 'PV', 'Δ PV'])
         
         while i<len(image):
             a = np.amax(image[i])
@@ -147,6 +208,9 @@ class Analysis():
             
             print("PV",i, "=", pv[i])
             print("deltaPV",i, "=", pv1[i])
+
+            list_rows.append([i+1, pv[i], pv1[i]])            
+            
             i=i+1
             
         print("")
@@ -162,6 +226,15 @@ class Analysis():
         print("Standard Deviation PV = ", dev)
         print("Standard Deviation deltaPV = ", dev1)
         
+        list_rows.append([' ', ' ', ' '])
+        list_rows.append(['Mean PV', media, ' '])
+        list_rows.append(['Mean Δ PV', media1, ' '])
+        list_rows.append(['Standard Deviation PV', dev, ' '])
+        list_rows.append(['Standard Deviation Δ PV', dev1, ' '])
+        
+        'Per salvare su file di testo togliere #'
+        #np.savetxt("Picco Valle.csv", list_rows, delimiter= ",", fmt = '%s')
+        
         return pv, media, dev, pv1, media1, dev1
     
 
@@ -170,14 +243,40 @@ class Analysis():
         return mean
     
     '''
-    Funzione per la rimozione di coefficienti di Zernike.
-    modes deve essere un array con coefficiente >0
+    Funzioni per la rimozione di coefficienti di Zernike.
+    num = int >0
+    
+    removeZernike -> rimozione solo degli Zernike calcolati
+    
+    removeZernike2 -> rimozione degli Zernike indicati (num) dopo aver 
+                    calcolato i primi 36 coeff di Zernike (senza pistone)
+                    
+    removeZernike3 -> rimozione degli Zernike indicati (num) dopo aver 
+                    indicato il numero di Zernike totali da calcolare
+                    (numzer) 
+                        numzer = int, numero Zernike da calcolare
+                        es: numzer = 35 -> corrisponde al coefficiente36
     '''
     
     def removeZernike(self, ima, num):
         coeff, mat = zernike.zernikeFit(ima, np.linspace(1,num,num))
         surf = zernike.zernikeSurface(ima, coeff, mat)
         new_ima = ima - surf
+        return new_ima
+    
+    
+    def removeZernike2(self, ima, num):
+        coeff, mat = zernike.zernikeFit(ima, np.arange(1,36))
+        surf = zernike.zernikeSurface(ima, coeff[0:num], mat[:,0:num])
+        new_ima = ima - surf
+        
+        return new_ima
+    
+    def removeZernike3(self, ima, num, numzer):
+        coeff, mat = zernike.zernikeFit(ima, np.arange(1,numzer))
+        surf = zernike.zernikeSurface(ima, coeff[0:num], mat[:,0:num])
+        new_ima = ima - surf
+        
         return new_ima
     
     
@@ -189,16 +288,212 @@ class Analysis():
         diff = []
         rms = []
         residui = []
-        coeff, mat = zernike.zernikeFit(image, np.arange(1, 35))
+        coeff, mat = zernike.zernikeFit(image, np.linspace(1,36,36))
         #surf_image = zernike.zernikeSurface(image, coeff, mat)
-        i=0
+        i=1
         while i<len(coeff)+1:
             surf1 = zernike.zernikeSurface(image, coeff[0:i], mat[:,0:i])
             diff.append(image - surf1)
-            rms.append(np.std(diff))
-            residui.append(i+1)
+            rms.append(np.std(diff[i-1]))
+            residui.append(i)
             #coef, mat = ...(diff, np....)
-            print("RMS", i, " = ", rms[i] )
+            print("RMS", i, " = ", rms[i-1] )
+            i=i+1
+        plt.plot(residui,rms,marker="o",color='red')
+        plt.title("Calcolo dei residui")
+        plt.xlabel("Numero Zernike")
+        plt.ylabel("RMS")
+        #plt.ylim(np.min(rms), np.max(rms))
+        plt.ylim(np.min(rms)*0.75, np.max(rms)*1.25)
+        plt.show()
+        
+        
+        #imshow(diff[i])
+        
+        return rms, diff
+    
+    '''
+    Stesso risultato ma tempo di calcolo molto inferiore
+    '''
+    
+    def residui2(self, image):
+        '''
+        image deve essere una sola immagine
+        '''
+        diff = []
+        rms = []
+        residui = []
+        a = np.std(image)
+        coeff, mat = zernike.zernikeFit(image, np.linspace(1,36,36))
+        #surf_image = zernike.zernikeSurface(image, coeff, mat)
+        i=1
+        while i<len(coeff)+1:
+            surf1 = zernike.zernikeSurface(image, coeff[0:i], mat[:,0:i])
+            b = np.std(surf1)
+            rms.append(np.sqrt((a**2)-(b**2)))
+            residui.append(i)
+            #coef, mat = ...(diff, np....)
+            print("RMS", i, " = ", rms[i-1] )
+            i=i+1
+        plt.plot(residui,rms,marker="o",color='red')
+        plt.title("Calcolo dei residui")
+        plt.xlabel("Numero Zernike")
+        plt.ylabel("RMS")
+        #plt.ylim(np.min(rms), np.max(rms))
+        plt.ylim(np.min(rms)*0.75, np.max(rms)*1.25)
+        plt.show()
+        
+        
+        #imshow(diff[i])
+        
+        return rms, diff
+    
+    
+    def residui3(self, image, num, numzer):
+        '''
+        image deve essere una sola immagine
+        
+            num: int, numero del coeff di Zernike fino al quale
+            calcolare i residui
+            
+            numzer: int, numero dei coeff di Zernike da usare per il
+            calcolo dei coefficienti
+        '''
+        diff = []
+        rms = []
+        residui = []
+        p = numzer
+        a = np.std(image)
+        coeff, mat = zernike.zernikeFit(image, np.linspace(1,p,p))
+        #surf_image = zernike.zernikeSurface(image, coeff, mat)
+        i=1
+        while i<num+1:
+            surf1 = zernike.zernikeSurface(image, coeff[0:i], mat[:,0:i])
+            b = np.std(surf1)
+            rms.append(np.sqrt((a**2)-(b**2)))
+            residui.append(i)
+            #coef, mat = ...(diff, np....)
+            print("RMS", i, " = ", rms[i-1] )
+            i=i+1
+        plt.plot(residui,rms,marker="o",color='red')
+        plt.title("Calcolo dei residui")
+        plt.xlabel("Numero Zernike")
+        plt.ylabel("RMS")
+        #plt.ylim(np.min(rms), np.max(rms))
+        plt.ylim(np.min(rms)*0.75, np.max(rms)*1.25)
+        plt.show()
+        
+        
+        #imshow(diff[i])
+        
+        return rms, diff
+    
+    
+    def residui4(self, image, num, numzer):
+        '''
+        image deve essere una sola immagine
+        
+            num: int, numero del coeff di Zernike fino al quale
+            calcolare i residui
+            
+            numzer: int, numero dei coeff di Zernike da usare per il
+            calcolo dei coefficienti
+            
+            USO ZERNIKE_CIRCLE
+        '''
+
+        diff = []
+        rms = []
+        residui = []
+        p = numzer
+        a = np.std(image)
+        coeff, mat = zernike_circle.zernikeFit(image, np.linspace(1,p,p))
+        #surf_image = zernike.zernikeSurface(image, coeff, mat)
+        i=1
+        while i<num+1:
+            surf1 = zernike_circle.zernikeSurface(image, coeff[0:i], mat[:,0:i])
+            b = np.std(surf1)
+            rms.append(np.sqrt((a**2)-(b**2)))
+            residui.append(i)
+            #coef, mat = ...(diff, np....)
+            print("RMS", i, " = ", rms[i-1] )
+            i=i+1
+        plt.plot(residui,rms,marker="o",color='red')
+        plt.title("Calcolo dei residui")
+        plt.xlabel("Numero Zernike")
+        plt.ylabel("RMS")
+        #plt.ylim(np.min(rms), np.max(rms))
+        plt.ylim(np.min(rms)*0.75, np.max(rms)*1.25)
+        plt.show()
+        
+        
+        #imshow(diff[i])
+        
+        return rms, diff
+    
+    
+    def residui5(self, image, num, numzer):
+        '''
+        image deve essere una sola immagine
+        '''
+        diff = []
+        rms = []
+        residui = []
+        p = numzer
+        coeff, mat = zernike_circle.zernikeFit(image, np.linspace(1,p,p))
+        #surf_image = zernike.zernikeSurface(image, coeff, mat)
+
+        i=1
+        while i<num+1:
+            surf1 = zernike_circle.zernikeSurface(image, coeff[0:i], mat[:,0:i])
+            diff.append(image - surf1)
+            rms.append(np.std(diff[i-1]))
+            residui.append(i)
+            #coef, mat = ...(diff, np....)
+            print("RMS", i, " = ", rms[i-1] )
+            i=i+1
+        plt.plot(residui,rms,marker="o",color='red')
+        plt.title("Calcolo dei residui")
+        plt.xlabel("Numero Zernike")
+        plt.ylabel("RMS")
+        #plt.ylim(np.min(rms), np.max(rms))
+        plt.ylim(np.min(rms)*0.75, np.max(rms)*1.25)
+        plt.show()
+        
+        
+        #imshow(diff[i])
+        
+        return rms, diff
+    
+    
+    def residui6(self, image, num, numzer):
+        '''
+        image deve essere una sola immagine
+        
+            num: int, numero del coeff di Zernike fino al quale
+            calcolare i residui
+            
+            numzer: int, numero dei coeff di Zernike da usare per il
+            calcolo dei coefficienti
+            
+            USO ZERNIKE_ELLIPSE
+        '''
+
+        diff = []
+        rms = []
+        residui = []
+        p = numzer
+        a = np.std(image)
+        coeff, mat = zernike_ellipse.zernikeFit(image, np.linspace(1,p,p))
+        #surf_image = zernike.zernikeSurface(image, coeff, mat)
+        i=1
+        while i<num+1:
+            surf1 = zernike_ellipse.zernikeSurface(image, coeff[0:i], mat[:,0:i])
+            b = np.std(surf1)
+            rms.append(np.sqrt((a**2)-(b**2)))
+            residui.append(i)
+            #coef, mat = ...(diff, np....)
+            print("RMS", i, " = ", rms[i-1] )
             i=i+1
         plt.plot(residui,rms,marker="o",color='red')
         plt.title("Calcolo dei residui")
@@ -215,23 +510,24 @@ class Analysis():
     
     
     
-    def residui2(self, image):
+    def residui7(self, image):
         '''
         image deve essere una sola immagine
         '''
         diff = []
         rms = []
         residui = []
-        #coeff, mat = zernike.zernikeFit(image, np.arange(1, 35))
+        coeff, mat = zernike_ellipse.zernikeFit(image, np.linspace(1,36,36))
         #surf_image = zernike.zernikeSurface(image, coeff, mat)
+
         i=1
-        while i<36:
-            surf1 = self.removeZernike(image, i)
-            #diff.append(image - surf1)
-            rms.append(np.std(surf1))
+        while i<len(coeff)+1:
+            surf1 = zernike_ellipse.zernikeSurface(image, coeff[0:i], mat[:,0:i])
+            diff.append(image - surf1)
+            rms.append(np.std(diff[i-1]))
             residui.append(i)
             #coef, mat = ...(diff, np....)
-            #print("RMS", i, " = ", rms[i] )
+            print("RMS", i, " = ", rms[i-1] )
             i=i+1
         plt.plot(residui,rms,marker="o",color='red')
         plt.title("Calcolo dei residui")
@@ -242,9 +538,10 @@ class Analysis():
         plt.show()
         
         
-        #plt.show(diff[i])
+        #imshow(diff[i])
         
         return rms, diff
+    
       
     
 
@@ -269,17 +566,17 @@ class Analysis():
                         line_tokens.append(float(tok))
                     lines.append(line_tokens)
                     
-        i=3
+        i=2
         d=0
         val=[]
         vali=[]
         
         while i<len(coeff):
-            print("coeff = ", coeff[i], "ck = ", lines[i-3])
-            a = (coeff[i]/lines[i-3])**2
-            d += (coeff[i]/lines[i-3])**2
+            print("coeff = ", coeff[i], "ck = ", lines[i-2])
+            a = (coeff[i]/lines[i-2])**2
+            d += (coeff[i]/lines[i-2])**2
             val.append(a)
-            vali.append(i+1)
+            vali.append(i+2)
             i=i+1
         
         plt.plot(vali,val,marker="o",color='red')
@@ -565,7 +862,6 @@ class Analysis():
         
         x = image
         val = []
-        wwww = []
         
         i=0
         while i < imagePixels:
@@ -579,9 +875,37 @@ class Analysis():
                 val.append(np.array([[i,q[0,0]],[i,q[0,q.size-1]]]))
                 i = i+1
            
-        cut1 = np.concatenate(val)
+        cut = np.concatenate(val)
         
-        return cut1
+        return cut
+    
+    
+    def maschera_cerchio_inscritto_ellisse(self, image, imagePixels):
+        
+        xc, yc, a, b, theta = self.ellipse_parameters_detection(image,imagePixels)
+        maskedd = np.zeros((imagePixels, imagePixels), dtype = np.uint8) 
+        
+        rr, cc = circle(xc, yc , a)
+        maskedd[rr,cc] = 1
+        maskinv = np.logical_not(maskedd)
+        
+        new_ima = np.ma.masked_array(image, mask = maskinv)
+        
+        return new_ima
+    
+    
+    def maschera_cerchio_circoscritto_ellisse(self, image, imagePixels):
+        
+        xc, yc, a, b, theta = self.ellipse_parameters_detection(image,imagePixels)
+        maskedd = np.zeros((imagePixels, imagePixels), dtype = np.uint8) 
+        
+        rr, cc = circle(xc, yc , b)
+        maskedd[rr,cc] = 1
+        maskinv = np.logical_not(maskedd)
+        
+        new_ima = np.ma.masked_array(image, mask = maskinv)
+        
+        return new_ima
                 
     
     
